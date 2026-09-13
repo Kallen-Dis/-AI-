@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>智能AI旅游规划助手</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.8.0/styles/github-dark.min.css">
+    <link rel="stylesheet" href="/static/style.css?v=ui4">
+    <script src="https://api.map.baidu.com/api?v=3.0&ak={{ baidu_browser_ak }}"></script>
+    <script src="https://cdn.jsdelivr.net/npm/markdown-it@13.0.1/dist/markdown-it.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.8.0/dist/highlight.min.js"></script>
+</head>
+<body>
+    <header class="topbar">
+        <div class="topbar-left">
+            <span class="brand-mark">智</span>
+            <span class="brand">智能AI旅游规划助手</span>
+        </div>
+        <div class="topbar-center">
+            <div class="chat-input-bar">
+                <span class="chat-input-avatar">🌿</span>
+                <input id="chatInput" type="text" placeholder="和小满聊聊你的旅行计划..."
+                       onkeydown="if(event.key==='Enter')sendChatMessage()" autocomplete="off"
+                       onfocus="showConversation()" />
+                <span class="chat-unread-badge" id="chatUnreadBadge" onclick="showConversation()"></span>
+                <button id="chatSendBtn" onclick="sendChatMessage()"><i class="fas fa-paper-plane"></i></button>
+            </div>
+        </div>
+        <div class="topbar-right">
+            <button class="tab-btn guide-tab-btn" onclick="openGuide()" title="使用教程"><i class="fas fa-circle-question"></i> 使用教程</button>
+            <button class="tab-btn active" data-tab="map" onclick="switchTab('map')"><i class="fas fa-map"></i> 地图</button>
+            <button class="tab-btn" data-tab="journal" onclick="switchTab('journal')"><i class="fas fa-book-open"></i> 游记</button>
+        </div>
+    </header>
+
+    <!-- 快捷选项栏 -->
+    <div class="quick-chips-bar" id="quickChipsBar">
+        <div class="chip-group">
+            <span class="chip-label"><i class="fas fa-calendar-alt"></i> 天数</span>
+            <button class="chip" data-type="days" data-val="1" onclick="toggleChip(this)">1天</button>
+            <button class="chip" data-type="days" data-val="2" onclick="toggleChip(this)">2天</button>
+            <button class="chip" data-type="days" data-val="3" onclick="toggleChip(this)">3天</button>
+            <button class="chip" data-type="days" data-val="5" onclick="toggleChip(this)">5天</button>
+            <button class="chip" data-type="days" data-val="7" onclick="toggleChip(this)">7天</button>
+        </div>
+        <div class="chip-group">
+            <span class="chip-label"><i class="fas fa-heart"></i> 偏好</span>
+            <button class="chip chip-multi" data-type="pref" data-val="历史文化" onclick="toggleChip(this)">历史文化</button>
+            <button class="chip chip-multi" data-type="pref" data-val="美食" onclick="toggleChip(this)">美食</button>
+            <button class="chip chip-multi" data-type="pref" data-val="自然风光" onclick="toggleChip(this)">自然风光</button>
+            <button class="chip chip-multi" data-type="pref" data-val="亲子" onclick="toggleChip(this)">亲子</button>
+            <button class="chip chip-multi" data-type="pref" data-val="户外运动" onclick="toggleChip(this)">户外</button>
+            <button class="chip chip-multi" data-type="pref" data-val="乡村体验" onclick="toggleChip(this)">乡村</button>
+            <button class="chip chip-multi" data-type="pref" data-val="购物" onclick="toggleChip(this)">购物</button>
+        </div>
+        <div class="chip-group">
+            <span class="chip-label"><i class="fas fa-yen-sign"></i> 预算</span>
+            <button class="chip" data-type="budget" data-val="1000" onclick="toggleChip(this)">¥1000</button>
+            <button class="chip" data-type="budget" data-val="3000" onclick="toggleChip(this)">¥3000</button>
+            <button class="chip" data-type="budget" data-val="5000" onclick="toggleChip(this)">¥5000</button>
+            <button class="chip" data-type="budget" data-val="10000" onclick="toggleChip(this)">¥万+</button>
+        </div>
+    </div>
+
+    <!-- 点击遮罩收起对话 -->
+    <div class="conv-backdrop hidden" id="convBackdrop" onclick="hideConversation()"></div>
+
+    <!-- 小满对话面板（搜索框下方下拉） -->
+    <div class="conversation-panel collapsed" id="conversationPanel">
+        <div class="conversation-header" onclick="hideConversation()">
+            <div class="conversation-title">
+                <span class="conv-avatar">🌿</span>
+                <span>小满 · 旅行定制师</span>
+                <span class="conversation-status" id="convStatus">在线</span>
+            </div>
+            <div class="conversation-actions">
+                <button class="conv-action-btn" onclick="event.stopPropagation();resetChat()" title="新对话"><i class="fas fa-redo-alt"></i></button>
+                <button class="conv-action-btn" onclick="hideConversation()" title="收起"><i class="fas fa-chevron-up"></i></button>
+            </div>
+        </div>
+        <div class="conversation-body" id="conversationBody">
+            <div class="conversation-messages" id="chatMessages"></div>
+        </div>
+        <div class="conv-resize-handle" id="convResizeHandle"></div>
+    </div>
+
+    <div id="loadingOverlay" class="loading-overlay" style="display:none;">
+        <div class="loading-content">
+            <div class="spinner"></div>
+            <p id="loadingText">Agent 正在规划中...</p>
+            <div class="loading-steps" id="loadingSteps"></div>
+        </div>
+    </div>
+
+    <div class="main-wrapper">
+        <div id="tabMap" class="tab-content active">
+            <div class="layout-row">
+                <aside class="sidebar" id="sidebar">
+                    <div class="sidebar-toggle" onclick="toggleSidebar()"><i class="fas fa-chevron-left"></i></div>
+
+                    <button type="button" class="guide-banner" onclick="openGuide()">
+                        <i class="fas fa-circle-question"></i>
+                        <span>第一次用？点这里看完整使用教程</span>
+                    </button>
+
+                    <!-- 侧边栏二级 Tab -->
+                    <div class="sidebar-tabs">
+                        <button class="stab active" data-stab="plan" onclick="switchStab('plan')">
+                            <i class="fas fa-clipboard-list"></i> 行程
+                        </button>
+                        <button class="stab" data-stab="pois" onclick="switchStab('pois')">
+                            <i class="fas fa-map-pin"></i> 地点
+                        </button>
+                    </div>
+
+                    <!-- 行程面板组 -->
+                    <div id="stabPlan" class="stab-content">
+                        <div class="panel" id="panelPlan">
+                            <h3><i class="fas fa-clipboard-list"></i> AI 行程规划</h3>
+                            <div id="planNotice" style="display:none;"></div>
+                            <div id="planContent" class="plan-content"><p class="empty-hint">先选天数/偏好/预算，再和小满聊天说明目的地。信息齐了会自动规划，结果会出现在这里。</p></div>
+                        </div>
+                        <div class="panel" id="panelWaypoints">
+                            <h3><i class="fas fa-route"></i> 途经点 <button class="btn-sm" onclick="addWaypointDialog()"><i class="fas fa-plus"></i></button></h3>
+                            <div id="waypointList" class="waypoint-list"><p class="empty-hint">暂无途经点</p></div>
+                            <div class="panel-actions">
+                                <select id="routeMode">
+                                    <option value="driving">驾车</option><option value="walking">步行</option>
+                                    <option value="bicycling">骑行</option><option value="transit">公交</option>
+                                </select>
+                                <button class="btn-primary" id="routePlanBtn" onclick="planRoutes()"><i class="fas fa-directions"></i> 规划路线</button>
+                            </div>
+                            <div id="routeInfoPanel" class="route-info-panel" style="display:none;"></div>
+                        </div>
+                        <div class="panel" id="panelLayers">
+                            <h3><i class="fas fa-layer-group"></i> 地图图层</h3>
+                            <div class="layer-controls">
+                                <label class="layer-toggle"><input type="checkbox" id="toggleAttractions" checked onchange="toggleLayer('attraction')"><span class="layer-dot" style="background:#4F6AF6;"></span> 景点 <span class="layer-count" id="countAttractions">0</span></label>
+                                <label class="layer-toggle"><input type="checkbox" id="toggleRestaurants" checked onchange="toggleLayer('restaurant')"><span class="layer-dot" style="background:#F97316;"></span> 餐厅 <span class="layer-count" id="countRestaurants">0</span></label>
+                                <label class="layer-toggle"><input type="checkbox" id="toggleHotels" checked onchange="toggleLayer('hotel')"><span class="layer-dot" style="background:#10B981;"></span> 酒店 <span class="layer-count" id="countHotels">0</span></label>
+                                <label class="layer-toggle"><input type="checkbox" id="toggleRoutes" checked onchange="toggleRouteLayer()"><span class="layer-dot" style="background:#8B5CF6;"></span> 路线</label>
+                            </div>
+                        </div>
+                        <div class="panel" id="panelWeather" style="display:none;">
+                            <h3><i class="fas fa-cloud-sun"></i> 天气预报</h3>
+                            <div id="weatherContent"></div>
+                        </div>
+                        <div class="panel" id="panelItinerary" style="display:none;">
+                            <h3><i class="fas fa-route"></i> 每日行程清单</h3>
+                            <div id="itineraryContent" class="itinerary-list"></div>
+                        </div>
+                    </div>
+
+                    <!-- 地点面板 -->
+                    <div id="stabPois" class="stab-content" style="display:none;">
+                        <div class="poi-filter-bar">
+                            <button class="poi-filter active" data-pf="all" onclick="filterPoiList('all')">全部</button>
+                            <button class="poi-filter" data-pf="attraction" onclick="filterPoiList('attraction')">
+                                <span class="pf-dot" style="background:#4F6AF6;"></span>景点
+                            </button>
+                            <button class="poi-filter" data-pf="restaurant" onclick="filterPoiList('restaurant')">
+                                <span class="pf-dot" style="background:#F97316;"></span>餐厅
+                            </button>
+                            <button class="poi-filter" data-pf="hotel" onclick="filterPoiList('hotel')">
+                                <span class="pf-dot" style="background:#10B981;"></span>酒店
+                            </button>
+                        </div>
+                        <div id="poiListContent" class="poi-list">
+                            <p class="empty-hint" style="padding:16px;">AI 规划后将显示推荐地点列表</p>
+                        </div>
+                    </div>
+
+                </aside>
+                <div class="map-wrap">
+                    <div class="map-container" id="mapContainer"></div>
+                    <button type="button" class="guide-fab" onclick="openGuide()" title="使用教程">
+                        <i class="fas fa-circle-question"></i>
+                        <span>教程</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div id="tabJournal" class="tab-content">
+            <div class="journal-wrapper">
+                <div class="journal-header">
+                    <h2><i class="fas fa-feather-alt"></i> 旅行游记</h2>
+                    <div class="journal-actions">
+                        <button class="btn-primary" onclick="addJournalEntry()"><i class="fas fa-plus"></i> 添加</button>
+                        <button class="btn-outline" onclick="exportJournal()"><i class="fas fa-download"></i> 导出</button>
+                    </div>
+                </div>
+                <div class="journal-timeline" id="journalTimeline"><p class="empty-hint">AI 规划后将自动生成游记框架，你也可以手动添加</p></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="addWpDialog" class="modal" style="display:none;">
+        <div class="modal-body"><h3>添加途经点</h3><input id="wpSearchInput" type="text" placeholder="搜索地点..." /><div id="wpSearchResults" class="search-results"></div><div class="modal-footer"><button class="btn-outline" onclick="closeWpDialog()">取消</button></div></div>
+    </div>
+    <div id="editEntryDialog" class="modal" style="display:none;">
+        <div class="modal-body modal-lg"><h3>编辑游记条目</h3><input type="hidden" id="editEntryId" />
+            <div class="form-row"><label>时间</label><input id="editEntryTime" type="time" /></div>
+            <div class="form-row"><label>标题</label><input id="editEntryTitle" type="text" /></div>
+            <div class="form-row"><label>内容</label><textarea id="editEntryContent" rows="6"></textarea></div>
+            <div class="modal-footer"><button class="btn-outline" onclick="closeEditEntry()">取消</button><button class="btn-primary" onclick="saveEditEntry()">保存</button></div>
+        </div>
+    </div>
+
+    <div id="guideDialog" class="modal" style="display:none;" onclick="if(event.target===this)closeGuide()">
+        <div class="modal-body modal-guide" onclick="event.stopPropagation()">
+            <div class="guide-header">
+                <h3><i class="fas fa-circle-question"></i> 使用教程</h3>
+                <button class="guide-close" onclick="closeGuide()" title="关闭">✕</button>
+            </div>
+            <p class="guide-lead">这是一个 AI 旅行规划网页：你告诉「小满」去哪、玩几天、预算和喜好，系统会生成行程、在地图上标点和画路线，还能记游记。</p>
+
+            <div class="guide-step">
+                <span class="guide-num">1</span>
+                <div>
+                    <h4>先点快捷选项（可选，但推荐）</h4>
+                    <p>顶部彩色标签可以快速选定：<b>天数</b>、<b>偏好</b>（可多选）、<b>预算</b>。点一次选中，再点一次取消。这些会自动带给小满，不用再手打一遍。</p>
+                </div>
+            </div>
+            <div class="guide-step">
+                <span class="guide-num">2</span>
+                <div>
+                    <h4>和小满聊天，说出目的地</h4>
+                    <p>点顶部输入框会展开对话。用日常说话即可，例如：</p>
+                    <ul>
+                        <li>「想去安庆玩 3 天，喜欢文化和美食，预算 2000」</li>
+                        <li>「西安 5 天，带孩子，预算 5000」</li>
+                    </ul>
+                    <p>必填是<strong>目的地城市</strong>。天数、预算、偏好没选时，小满会继续问。信息齐了会自动开始规划，页面中间会出现加载提示，请稍等几十秒。</p>
+                    <p>对话右上角的刷新按钮可以<strong>开始新对话</strong>，清空当前聊天。</p>
+                </div>
+            </div>
+            <div class="guide-step">
+                <span class="guide-num">3</span>
+                <div>
+                    <h4>看行程和地图</h4>
+                    <p>规划完成后：</p>
+                    <ul>
+                        <li>左侧「行程」里是文字版日程、途经点、天气。</li>
+                        <li>右侧地图上：<span class="guide-dot" style="background:#4F6AF6;"></span>蓝色是景点，<span class="guide-dot" style="background:#F97316;"></span>橙色是餐厅，<span class="guide-dot" style="background:#10B981;"></span>绿色是酒店，彩色线是路线。</li>
+                        <li>点地图标记可看地址、评分等信息。</li>
+                        <li>「地点」页签可按类型筛选列表，点一条会定位到地图。</li>
+                    </ul>
+                </div>
+            </div>
+            <div class="guide-step">
+                <span class="guide-num">4</span>
+                <div>
+                    <h4>调整路线</h4>
+                    <ul>
+                        <li>途经点可以拖拽改顺序，或点「+」搜索添加。</li>
+                        <li>在地图上<strong>右键</strong>可快速加一个途经点。</li>
+                        <li>选好「驾车 / 步行 / 骑行 / 公交」后点「规划路线」，会按当前途经点重算。</li>
+                        <li>多天行程可点「第 1 天 / 第 2 天」切换当天途经点。</li>
+                        <li>「地图图层」可单独隐藏景点、餐厅、酒店或路线。</li>
+                    </ul>
+                </div>
+            </div>
+            <div class="guide-step">
+                <span class="guide-num">5</span>
+                <div>
+                    <h4>写游记</h4>
+                    <p>右上角切到「游记」。规划成功后会自动生成每天的提纲，你可以改时间、标题、正文，也可以自己添加。点「导出」会下载一份 Markdown 文件，方便保存或发朋友圈素材。</p>
+                </div>
+            </div>
+            <div class="guide-step">
+                <span class="guide-num">!</span>
+                <div>
+                    <h4>常见问题</h4>
+                    <ul>
+                        <li><b>地图是空白的：</b>检查百度开放平台是否把 <code>http://127.0.0.1:5000/*</code> 加进了浏览器端 Key 的白名单。</li>
+                        <li><b>规划很久或失败：</b>确认 DeepSeek 密钥有效、网络畅通；可换个说法再试一次。</li>
+                        <li><b>路线偏了或搜不到点：</b>确认百度服务端 Key 已开通地点检索、路线规划等服务。</li>
+                        <li><b>侧栏挡住地图：</b>点侧栏右侧小箭头可以收起。</li>
+                    </ul>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <label class="guide-dont"><input type="checkbox" id="guideDontShow" /> 下次不再自动弹出</label>
+                <button class="btn-primary" onclick="closeGuide()">我知道了，开始规划</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/app.js?v=ui4"></script>
+</body>
+</html>
