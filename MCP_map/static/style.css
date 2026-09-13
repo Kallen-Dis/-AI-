@@ -1,5 +1,5 @@
 /* ==============================
-   MCP Travel Agent — 全局样式
+   智能AI旅游规划助手 — 全局样式
    ============================== */
 :root {
     --primary: #0F766E;
@@ -23,15 +23,17 @@ body { font-family: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", -apple-sys
 
 /* ===== Topbar ===== */
 .topbar { display:flex; align-items:center; height:64px; padding:0 20px; background:rgba(255,252,247,.86); border-bottom:1px solid var(--border); z-index:1000; position:relative; backdrop-filter: blur(16px); }
-.topbar-left { display:flex; align-items:center; gap:10px; font-size:15px; font-weight:700; color:var(--primary); min-width:220px; }
+.topbar-left { display:flex; align-items:center; gap:10px; font-size:15px; font-weight:700; color:var(--primary); min-width:248px; flex-shrink:0; }
 .brand-mark {
     width: 34px; height: 34px; border-radius: 11px;
     background: linear-gradient(145deg, #0F766E, #14B8A6);
-    color: #fff; font-size: 16px; font-weight: 800;
+    color: #fff; font-size: 15px; font-weight: 800;
     display: flex; align-items: center; justify-content: center;
     box-shadow: 0 6px 16px rgba(15,118,110,.28);
+    flex-shrink: 0;
 }
-.brand { letter-spacing: .04em; }
+.brand-mark i { font-size: 16px; }
+.brand { letter-spacing: .02em; white-space: nowrap; }
 .topbar-left i { font-size:22px; }
 .topbar-center { flex:1; display:flex; justify-content:center; position:relative; }
 .chat-input-bar { display:flex; align-items:center; max-width:640px; width:100%; height:46px; background:#fff; border:1px solid var(--border); border-radius:23px; padding:0 6px 0 16px; transition:border-color .2s, box-shadow .2s; position:relative; z-index:1002; box-shadow: 0 4px 16px rgba(28,25,23,.05); }

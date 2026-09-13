@@ -53,10 +53,10 @@ from tools.search_tools import get_search_tool
 
 
 # ================================================================
-#  Amap 适配器 - 将 AmapTools 接口适配为 DataCollectionAgent 期望的接口
+#  地图适配器 - 将 BaiduTools 接口适配为 DataCollectionAgent 期望的接口
 # ================================================================
 
-class AmapClientAdapter:
+class MapClientAdapter:
     """
     将地图工具接口适配为 DataCollectionAgent 期望的接口
     DataCollectionAgent 期望:
@@ -73,7 +73,7 @@ class AmapClientAdapter:
         # 多城市输入（如"上海、苏州"）只取第一个城市进行地理编码
         city = _first_city(location)
         if city != location:
-            print(f"[AmapAdapter] geocode: 多城市输入 '{location}' → 使用 '{city}'")
+            print(f"[MapAdapter] geocode: 多城市输入 '{location}' → 使用 '{city}'")
         result = self._tools.geocode(address=city)
         if "error" in result:
             return None
@@ -92,16 +92,16 @@ class AmapClientAdapter:
     def search_pois(self, location: str, lat: float, lng: float,
                     poi_types: List[str] = None, page_size: int = 8) -> List[POI]:
         """搜索 POI → List[POI 对象]"""
-        # 多城市输入只取第一个城市，避免 Amap city 参数无效导致返回莫名城市结果
+        # 多城市输入只取第一个城市，避免 city 参数无效导致返回莫名城市结果
         city_param = _first_city(location)
         if city_param != location:
-            print(f"[AmapAdapter] search_pois: 多城市输入 '{location}' → city='{city_param}'")
+            print(f"[MapAdapter] search_pois: 多城市输入 '{location}' → city='{city_param}'")
         keywords_list = poi_types or ["景点", "餐厅", "酒店"]
         all_pois: List[POI] = []
         seen_names: set = set()
         poi_id = 0
 
-        # Amap 每页最多 25 条；需要更多条目时自动翻页
+        # 百度 Place 每页最多 20 条；需要更多条目时自动翻页
         BAIDU_MAX_PER_PAGE = 20
         per_page = min(BAIDU_MAX_PER_PAGE, page_size)
         num_pages = max(1, (page_size + BAIDU_MAX_PER_PAGE - 1) // BAIDU_MAX_PER_PAGE)
@@ -233,9 +233,9 @@ class TravelPlanningOrchestrator:
         from tools.config import load_baidu_keys
         baidu_key, _browser_key = load_baidu_keys()
         _map_raw = BaiduTools(api_key=baidu_key) if baidu_key else None
-        amap_client = AmapClientAdapter(_map_raw) if _map_raw else None
-        self._amap_raw = _map_raw
-        if amap_client:
+        map_client = MapClientAdapter(_map_raw) if _map_raw else None
+        self._map_raw = _map_raw
+        if map_client:
             print("[Orchestrator] 百度地图 API 已接入（真实数据模式）")
         else:
             print("[Orchestrator] 未配置 BAIDU_MAP_AK / KEY.md，使用 mock 数据")
@@ -258,7 +258,7 @@ class TravelPlanningOrchestrator:
         self._search_tool = get_search_tool()
 
         self.guide_agent = GuideAgent(llm_client=self._llm) if self._llm else None
-        self.data_collection_agent = DataCollectionAgent(amap_client=amap_client)
+        self.data_collection_agent = DataCollectionAgent(map_client=map_client)
         self.culture_agent = CultureAgent(
             llm_client=self._llm,
             search_tool=self._search_tool,
@@ -377,7 +377,7 @@ class TravelPlanningOrchestrator:
         预处理步骤（DataCollection 之前执行）：
         当用户输入包含游戏/影视/IP/非地理主题（如"仙剑奇侠传3"）时，
         调用 LLM 快速提取实地景观特征标签存入 context.thematic_tags，
-        供 DataCollectionAgent 扩展高德搜索关键词。
+        供 DataCollectionAgent 扩展地图搜索关键词。
         """
         special_req = (context.user_intent.special_requirements or "").strip()
         if not special_req or not self._llm:
@@ -404,7 +404,7 @@ class TravelPlanningOrchestrator:
         try:
             prompt = (
                 f"用户要去{context.user_intent.destination}旅行，特殊需求/背景是：{special_req}\n"
-                f"请提取4~6个能用于高德地图搜索的实地景观特征关键词（如：古镇、溶洞、悬崖、道观、山地森林）。"
+                f"请提取4~6个能用于地图搜索的实地景观特征关键词（如：古镇、溶洞、悬崖、道观、山地森林）。"
                 f"只输出 JSON 数组，例如：[\"古镇\", \"道观\", \"溶洞\"]"
             )
             resp = self._llm.chat(messages=[
@@ -429,7 +429,7 @@ class TravelPlanningOrchestrator:
             (context.user_intent.raw_query or "") or
             (context.user_intent.special_requirements or "")
         ).strip()
-        if not raw_text or not self._amap_raw or not self._llm:
+        if not raw_text or not self._map_raw or not self._llm:
             return
 
         destination = _first_city(context.user_intent.destination)
@@ -486,7 +486,7 @@ class TravelPlanningOrchestrator:
 
             # 不在已有 POI 中：Amap 精确搜索并注入
             try:
-                res = self._amap_raw.search_pois(
+                res = self._map_raw.search_pois(
                     keywords=name, city=destination, page_size=5
                 )
                 pois_raw = res.get("pois", [])
@@ -568,7 +568,7 @@ class TravelPlanningOrchestrator:
         注入 context.pois（rating=5.0），确保叙事提到的地方出现在行程里。
         """
         narrative = context.cultural_narrative or ""
-        if not narrative or not self._amap_raw or not self._llm:
+        if not narrative or not self._map_raw or not self._llm:
             return
 
         destination = _first_city(context.user_intent.destination)
@@ -660,7 +660,7 @@ class TravelPlanningOrchestrator:
             else:
                 # 不存在：Amap 精确搜索并注入
                 try:
-                    res = self._amap_raw.search_pois(keywords=name, city=destination, page_size=3)
+                    res = self._map_raw.search_pois(keywords=name, city=destination, page_size=3)
                     pois_raw = res.get("pois", [])
                 except Exception:
                     continue

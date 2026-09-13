@@ -148,12 +148,16 @@ class BaiduTools:
         query = keywords or types or "景点"
         params = {
             "query": query,
-            "region": city,
-            "city_limit": "true",
             "page_size": min(int(page_size or 10), 20),
             "page_num": max(int(page or 1) - 1, 0),
             "scope": 2,
         }
+        if city:
+            params["region"] = city
+            params["city_limit"] = "true"
+        else:
+            params["region"] = query
+            params["city_limit"] = "false"
         raw = self._get("/place/v2/search", params)
         if "error" in raw:
             return raw

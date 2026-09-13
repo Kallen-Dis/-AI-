@@ -46,7 +46,6 @@ def load_baidu_keys(project_root: Optional[Path] = None) -> tuple:
     server = (
         os.getenv("BAIDU_MAP_AK", "")
         or os.getenv("BAIDU_API_KEY", "")
-        or os.getenv("AMAP_API_KEY", "")
     )
     browser = os.getenv("BAIDU_MAP_BROWSER_AK", "")
     root = project_root or Path(__file__).resolve().parent.parent.parent

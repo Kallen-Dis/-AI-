@@ -26,9 +26,9 @@ class DataCollectionAgent(TravelPlanningAgent):
         "文化遗产": ["博物馆", "历史遗址", "古迹"],
     }
     
-    def __init__(self, amap_client=None):
+    def __init__(self, map_client=None):
         super().__init__(name="data_collection_agent")
-        self.amap_client = amap_client  # 高德地图API客户端
+        self.map_client = map_client  # 高德地图API客户端
         self.cache = {}  # 本地缓存
     
     def _validate_input(self, context: PlanningContext) -> bool:
@@ -180,9 +180,9 @@ class DataCollectionAgent(TravelPlanningAgent):
             return self.cache[location]
         
         # 如果有真实API，调用它
-        if self.amap_client:
+        if self.map_client:
             try:
-                result = self.amap_client.geocode(location)
+                result = self.map_client.geocode(location)
                 self.cache[location] = result
                 return result
             except Exception as e:
@@ -259,9 +259,9 @@ class DataCollectionAgent(TravelPlanningAgent):
         }
         
         # 如果有真实API，调用它
-        if self.amap_client:
+        if self.map_client:
             try:
-                pois = self.amap_client.search_pois(location, lat, lng, poi_types, page_size)
+                pois = self.map_client.search_pois(location, lat, lng, poi_types, page_size)
                 return pois
             except Exception as e:
                 print(f"POI搜索API失败: {e}")
@@ -291,9 +291,9 @@ class DataCollectionAgent(TravelPlanningAgent):
         }
         
         # 如果有真实API，调用它
-        if self.amap_client:
+        if self.map_client:
             try:
-                weather = self.amap_client.get_weather(location, date)
+                weather = self.map_client.get_weather(location, date)
                 return weather
             except Exception as e:
                 print(f"天气查询API失败: {e}")

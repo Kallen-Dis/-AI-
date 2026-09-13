@@ -4,9 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>智能AI旅游规划助手</title>
+    <meta name="application-name" content="智能AI旅游规划助手">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.8.0/styles/github-dark.min.css">
-    <link rel="stylesheet" href="/static/style.css?v=ui4">
+    <link rel="stylesheet" href="/static/style.css?v=ui8">
     <script src="https://api.map.baidu.com/api?v=3.0&ak={{ baidu_browser_ak }}"></script>
     <script src="https://cdn.jsdelivr.net/npm/markdown-it@13.0.1/dist/markdown-it.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.8.0/dist/highlight.min.js"></script>
@@ -14,7 +15,7 @@
 <body>
     <header class="topbar">
         <div class="topbar-left">
-            <span class="brand-mark">智</span>
+            <span class="brand-mark" aria-hidden="true"><i class="fas fa-map-location-dot"></i></span>
             <span class="brand">智能AI旅游规划助手</span>
         </div>
         <div class="topbar-center">
@@ -140,6 +141,7 @@
                                 <label class="layer-toggle"><input type="checkbox" id="toggleRestaurants" checked onchange="toggleLayer('restaurant')"><span class="layer-dot" style="background:#F97316;"></span> 餐厅 <span class="layer-count" id="countRestaurants">0</span></label>
                                 <label class="layer-toggle"><input type="checkbox" id="toggleHotels" checked onchange="toggleLayer('hotel')"><span class="layer-dot" style="background:#10B981;"></span> 酒店 <span class="layer-count" id="countHotels">0</span></label>
                                 <label class="layer-toggle"><input type="checkbox" id="toggleRoutes" checked onchange="toggleRouteLayer()"><span class="layer-dot" style="background:#8B5CF6;"></span> 路线</label>
+                                <label class="layer-toggle"><input type="checkbox" id="toggleAllCandidates" onchange="toggleAllCandidates(this.checked)"><span class="layer-dot" style="background:#94A3B8;"></span> 全部检索点</label>
                             </div>
                         </div>
                         <div class="panel" id="panelWeather" style="display:none;">
@@ -288,6 +290,6 @@
         </div>
     </div>
 
-    <script src="/static/app.js?v=ui4"></script>
+    <script src="/static/app.js?v=ui9"></script>
 </body>
 </html>

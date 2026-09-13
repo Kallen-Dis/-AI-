@@ -1,5 +1,5 @@
 /* ================================================================
-   MCP Travel Agent — 百度地图 JS API
+   智能AI旅游规划助手 — 百度地图 JS API
    地图底图: 百度地图（BD-09 坐标系）
    数据来源: 百度 Web 服务（后端代理）
    ================================================================ */
@@ -61,6 +61,7 @@ var routeLayerGroup = null;
 var waypoints = [];
 var itineraryDays = [];   // 每天景点列表（TSP排序），来自后端 itinerary_days
 var currentWpDay = 0;     // 当前途经点显示的天序号（0-indexed）
+var showAllCandidates = false;
 var journalEntries = [];
 var targetCity = '';
 var dragSrcIdx = null;
@@ -72,6 +73,7 @@ var COLORS = {
 
 // ========== 初始化 ==========
 document.addEventListener('DOMContentLoaded', function () {
+    document.title = '智能AI旅游规划助手';
     initGuide();
     if (typeof BMap === 'undefined') {
         console.error('百度地图 JS API 未加载，请检查 KEY.md 浏览器端 Key 与域名白名单');
@@ -88,14 +90,17 @@ document.addEventListener('DOMContentLoaded', function () {
     markerLayerGroups.hotel = createOverlayGroup();
     routeLayerGroup = createOverlayGroup();
 
+    var mapEl = document.getElementById('mapContainer');
+    if (mapEl) {
+        mapEl.addEventListener('contextmenu', function (ev) { ev.preventDefault(); });
+    }
     map.addEventListener('rightclick', function (e) {
-        var name = prompt('输入地点名称:');
-        if (name) {
-            addWaypoint({
-                name: name, lng: e.point.lng, lat: e.point.lat,
-                type: 'attraction', order: waypoints.length + 1, address: ''
-            });
-        }
+        var name = window.prompt('输入地点名称:');
+        if (!name) return;
+        addWaypoint({
+            name: name.trim(), lng: e.point.lng, lat: e.point.lat,
+            type: 'attraction', order: waypoints.length + 1, address: ''
+        });
     });
 
     // 聊天自动初始化：进入页面就触发小满打招呼
@@ -190,7 +195,7 @@ function startPlan() {
 
 function applyPlanResult(data) {
     console.log('[PLAN DEBUG] applyPlanResult called with data:', data);
-    targetCity = (data.demands && data.demands.destination_city) || '';
+    targetCity = (data.demands && (data.demands.destination || data.demands.destination_city)) || '';
 
     // 行程文本 — 使用 markdown-it 渲染为 HTML
     var planHtml = md.render(data.plan_text || '');
@@ -222,14 +227,9 @@ function applyPlanResult(data) {
     clearAllMarkers();
     clearRoutes();
 
-    // 标记
-    var attrs = data.attraction_markers || [];
-    var rests = data.restaurant_markers || [];
-    var hotels = data.hotel_markers || [];
-    placeMarkers(attrs, 'attraction');
-    placeMarkers(rests, 'restaurant');
-    placeMarkers(hotels, 'hotel');
-    updateCounts(attrs.length, rests.length, hotels.length);
+    allPoiData.attraction = data.attraction_markers || [];
+    allPoiData.restaurant = data.restaurant_markers || [];
+    allPoiData.hotel = data.hotel_markers || [];
 
     // 途经点：用行程规划的分天数据，默认加载第1天
     itineraryDays = data.itinerary_days || [];
@@ -238,6 +238,7 @@ function applyPlanResult(data) {
         return { name: w.name, lat: w.lat, lng: w.lng, address: w.address || '', order: i + 1, type: 'attraction' };
     });
     renderWaypoints();
+    refreshMapMarkers();
 
     // 路线
     if (data.routes && data.routes.length) {
@@ -288,10 +289,7 @@ function reorderAttractionsBasedOnPlan(planText, attrMarkers) {
         // 重新排序
         attrMarkers.sort(function(a, b) { return (a.order || 999) - (b.order || 999); });
         
-        // 清除旧标记并重新绘制
-        clearAllMarkers();
-        placeMarkers(attrMarkers, 'attraction');
-        updateCounts(attrMarkers.length, markerGroups.restaurant.length, markerGroups.hotel.length);
+        refreshMapMarkers();
     }
     
     // 解析每日行程清单
@@ -416,12 +414,72 @@ function clearAllMarkers() {
     });
 }
 
+function invisibleIcon() {
+    return new BMap.Icon(
+        'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
+        new BMap.Size(1, 1)
+    );
+}
+
+function pickNearbyPois(candidates, anchors, limit) {
+    if (!candidates || !candidates.length || !limit) return [];
+    if (!anchors || !anchors.length) return candidates.slice(0, limit);
+    function minDist(p) {
+        var best = Infinity;
+        for (var i = 0; i < anchors.length; i++) {
+            var a = anchors[i];
+            if (!a.lat || !a.lng || !p.lat || !p.lng) continue;
+            var d = (p.lat - a.lat) * (p.lat - a.lat) + (p.lng - a.lng) * (p.lng - a.lng);
+            if (d < best) best = d;
+        }
+        return best;
+    }
+    return candidates.slice().sort(function (a, b) { return minDist(a) - minDist(b); }).slice(0, limit);
+}
+
+function markersForMap() {
+    if (showAllCandidates) {
+        return {
+            attraction: allPoiData.attraction || [],
+            restaurant: allPoiData.restaurant || [],
+            hotel: allPoiData.hotel || []
+        };
+    }
+    var dayPts = (waypoints || []).filter(function (w) { return w.lat && w.lng; });
+    if (!dayPts.length && itineraryDays[currentWpDay]) {
+        dayPts = itineraryDays[currentWpDay].slice();
+    }
+    if (!dayPts.length) {
+        dayPts = (allPoiData.attraction || []).slice(0, 8);
+    }
+    return {
+        attraction: dayPts,
+        restaurant: pickNearbyPois(allPoiData.restaurant || [], dayPts, 2),
+        hotel: pickNearbyPois(allPoiData.hotel || [], dayPts, 1)
+    };
+}
+
+function refreshMapMarkers() {
+    var packs = markersForMap();
+    clearAllMarkers();
+    placeMarkers(packs.attraction, 'attraction');
+    placeMarkers(packs.restaurant, 'restaurant');
+    placeMarkers(packs.hotel, 'hotel');
+    updateCounts(packs.attraction.length, packs.restaurant.length, packs.hotel.length);
+}
+
+function toggleAllCandidates(on) {
+    showAllCandidates = !!on;
+    refreshMapMarkers();
+    fitView();
+}
+
 function placeMarkers(items, type) {
     items.forEach(function (w, i) {
         if (!w.lng || !w.lat) return;
         var point = new BMap.Point(w.lng, w.lat);
         var marker = new BMap.Marker(point);
-        var label = new BMap.Label(makeIcon(type, i), { offset: new BMap.Size(-15, -28) });
+        var label = new BMap.Label(makeIcon(type, i), { offset: new BMap.Size(-14, -32) });
         label.setStyle({ border: 'none', background: 'transparent', padding: '0' });
         marker.setLabel(label);
         if (type === 'attraction') marker.enableDragging();
@@ -630,6 +688,8 @@ function switchWpDay(dayIdx) {
     });
     clearRoutes();
     renderWaypoints();
+    refreshMapMarkers();
+    fitView();
     saveWaypoints();
 }
 
@@ -662,20 +722,38 @@ function renderWaypoints() {
     }).join('');
     el.innerHTML = html;
 }
+function syncDayWaypoints() {
+    if (itineraryDays[currentWpDay]) {
+        itineraryDays[currentWpDay] = waypoints.slice();
+    } else if (!itineraryDays.length) {
+        itineraryDays = [waypoints.slice()];
+        currentWpDay = 0;
+    }
+}
+
 function addWaypoint(wp) {
+    if (!wp || wp.lng == null || wp.lat == null || (Number(wp.lng) === 0 && Number(wp.lat) === 0)) {
+        alert('这个地点没有坐标，换一个再试');
+        return;
+    }
+    wp.lng = Number(wp.lng);
+    wp.lat = Number(wp.lat);
+    wp.type = wp.type || 'attraction';
+    wp.order = waypoints.length + 1;
     waypoints.push(wp);
+    syncDayWaypoints();
     renderWaypoints();
-    var m = new BMap.Marker(new BMap.Point(wp.lng, wp.lat));
-    m.enableDragging();
-    var label = new BMap.Label(makeIcon('attraction', waypoints.length - 1), { offset: new BMap.Size(-15, -28) });
-    label.setStyle({ border: 'none', background: 'transparent', padding: '0' });
-    m.setLabel(label);
-    m.addEventListener('click', function () { showPopup(m, wp, 'attraction'); });
-    markerLayerGroups.attraction.addLayer(m);
-    markerGroups.attraction.push({ marker: m, data: wp });
+    refreshMapMarkers();
     saveWaypoints();
 }
-function removeWp(i) { waypoints.splice(i, 1); waypoints.forEach(function (w, j) { w.order = j + 1; }); renderWaypoints(); saveWaypoints(); }
+function removeWp(i) {
+    waypoints.splice(i, 1);
+    waypoints.forEach(function (w, j) { w.order = j + 1; });
+    syncDayWaypoints();
+    renderWaypoints();
+    refreshMapMarkers();
+    saveWaypoints();
+}
 function locateWp(i) { map.centerAndZoom(new BMap.Point(waypoints[i].lng, waypoints[i].lat), 15); }
 function wpDragStart(e, i) { dragSrcIdx = i; e.dataTransfer.effectAllowed = 'move'; }
 function wpDragOver(e) { e.preventDefault(); }
@@ -689,26 +767,51 @@ function saveWaypoints() { fetch('/api/waypoints', { method: 'PUT', headers: { '
 
 // ========== 添加途经点对话框 ==========
 var searchTimer = null;
+var wpSearchHits = [];
 function addWaypointDialog() {
-    document.getElementById('addWpDialog').style.display = '';
-    var input = document.getElementById('wpSearchInput'); input.value = '';
-    document.getElementById('wpSearchResults').innerHTML = ''; input.focus();
-    input.oninput = function () { clearTimeout(searchTimer); searchTimer = setTimeout(doWpSearch, 500); };
+    var dlg = document.getElementById('addWpDialog');
+    dlg.style.display = 'flex';
+    var input = document.getElementById('wpSearchInput');
+    input.value = '';
+    document.getElementById('wpSearchResults').innerHTML = '';
+    input.focus();
+    input.oninput = function () { clearTimeout(searchTimer); searchTimer = setTimeout(doWpSearch, 400); };
+    input.onkeydown = function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); doWpSearch(); }
+    };
 }
 function doWpSearch() {
     var kw = document.getElementById('wpSearchInput').value.trim();
-    if (!kw) return;
-    fetch('/api/search_place?keyword=' + encodeURIComponent(kw) + '&city=' + encodeURIComponent(targetCity))
-        .then(function (r) { return r.json(); }).then(function (pois) {
-            document.getElementById('wpSearchResults').innerHTML = pois.map(function (p) {
-                return '<div class="sr-item" onclick="pickWp(\'' + esc(p.name) + '\',' + p.longitude + ',' + p.latitude + ',\'' + esc(p.address || '') + '\')">' +
+    var box = document.getElementById('wpSearchResults');
+    if (!kw) { box.innerHTML = ''; return; }
+    box.innerHTML = '<p class="empty-hint">搜索中...</p>';
+    fetch('/api/search_place?keyword=' + encodeURIComponent(kw) + '&city=' + encodeURIComponent(targetCity || ''))
+        .then(function (r) { return r.json(); })
+        .then(function (pois) {
+            if (!Array.isArray(pois) || !pois.length) {
+                box.innerHTML = '<p class="empty-hint">没有搜到地点，换个关键词再试</p>';
+                wpSearchHits = [];
+                return;
+            }
+            wpSearchHits = pois;
+            box.innerHTML = pois.map(function (p, i) {
+                return '<div class="sr-item" onclick="pickWpIndex(' + i + ')">' +
                     '<strong>' + esc(p.name) + '</strong><div class="sr-addr">' + esc(p.address || '') + '</div></div>';
             }).join('');
+        })
+        .catch(function () {
+            box.innerHTML = '<p class="empty-hint">搜索失败，请检查网络或百度 Key</p>';
         });
 }
-function pickWp(name, lng, lat, addr) {
-    addWaypoint({ name: name, lng: lng, lat: lat, type: 'attraction', order: waypoints.length + 1, address: addr });
-    closeWpDialog(); map.centerAndZoom(new BMap.Point(lng, lat), 14);
+function pickWpIndex(i) {
+    var p = wpSearchHits[i];
+    if (!p) return;
+    addWaypoint({
+        name: p.name, lng: p.longitude, lat: p.latitude,
+        type: 'attraction', order: waypoints.length + 1, address: p.address || ''
+    });
+    closeWpDialog();
+    map.centerAndZoom(new BMap.Point(p.longitude, p.latitude), 14);
 }
 function closeWpDialog() { document.getElementById('addWpDialog').style.display = 'none'; }
 
@@ -1205,11 +1308,19 @@ function updateUnreadBadge() {
     });
 })();
 
+function chipPayload() {
+    return {
+        days: chipState.days ? parseInt(chipState.days) : null,
+        budget: chipState.budget ? parseFloat(chipState.budget) : null,
+        prefs: chipState.prefs.length > 0 ? chipState.prefs : null
+    };
+}
+
 function sendSystemMessage(text) {
     fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text })
+        body: JSON.stringify({ message: text, chip_state: chipPayload() })
     }).then(function (r) { return r.json(); })
     .then(function (data) {
         if (data.reply) {
@@ -1241,11 +1352,7 @@ function sendChatMessage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
             message: text,
-            chip_state: {
-                days: chipState.days ? parseInt(chipState.days) : null,
-                budget: chipState.budget ? parseFloat(chipState.budget) : null,
-                prefs: chipState.prefs.length > 0 ? chipState.prefs : null
-            }
+            chip_state: chipPayload()
         })
     }).then(function (r) { return r.json(); })
     .then(function (data) {

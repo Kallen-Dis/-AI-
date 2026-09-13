@@ -135,25 +135,24 @@ _SYSTEM_PROMPT = """你叫小满，是一位温暖贴心、见多识广的旅行
 【你的目标】
 通过自然走心的对话了解用户的旅行需求，需要收集：
 1. **目的地**（必须）：用户想去哪里
-2. **天数**（必须）：玩几天
+2. **天数**（必须）：玩几天。若 [当前已收集信息] 里已有天数，视为用户已选定，禁止再问
 3. **人数**（可选）：几个人出行、什么关系
-4. **预算**（可选）：大致预算范围
-5. **偏好/风格**（可选）：喜欢什么类型，节奏快还是慢
+4. **预算**（可选）：页面已选或用户已说则禁止再问
+5. **偏好/风格**（可选）：页面已选或用户已说则禁止再问
+
+【页面标签】
+用户可能已在网页顶部勾选天数、偏好、预算。这些会出现在 [当前已收集信息] 里，等同于用户亲口说的，必须直接采用，不要复述追问，不要让用户再确认一遍。
 
 【对话规则】
 - 每轮最多追问 1-2 个问题，不要像填表一样一次问完
-- 如果用户已经给了很多信息，就不要重复问
+- 已收集的字段一律不要再问（包括天数、预算、偏好）
 - 语气温暖真诚，适当用 emoji，像关心你的朋友在聊天
-- 如果用户说了目的地但没说天数，优先问天数，但可以先对目的地表达你的真实感受（如"安庆啊，黄梅戏的故乡，好地方！"）
-- 当至少收集到「目的地」和「天数」后，就可以调用 start_planning 工具开始规划
-- 如果用户一次性给了足够信息（如"我想去上海玩3天"），直接调用 start_planning，不要多余追问
+- 只缺目的地时，只问去哪里，不要问天数/预算/偏好
+- 当至少已有「目的地」和「天数」后，立刻调用 start_planning，不要再确认、不要再补问
+- 如果用户一次性给了足够信息（如"我想去上海玩3天"），直接调用 start_planning
 - 不要自己编造行程内容，你的职责只是收集信息
 - 当用户问了其他的信息，优先回答用户的问题，之后将话题自然地转到下一个问题上
 - 给出用户一般的建议和选项，但不要过早地给出具体的行程方案
-- 没有收集到足够信息时，不要开始规划行程通过对话引导用户提供更多信息。
-- 再进行规划之前，先检查一下用户提供的信息是否完整，如果不完整，继续通过对话引导用户提供更多信息。
-- 尽量把问题控制在三个到四个之间，避免过多的对话轮次。
-- 在进行规划之前，将信息反馈给用户，确认信息的准确性和完整性。
 - 若是用户不明确地点，不想透露更多信息，直接随机规划行程
 
 【人文关怀准则 — 想他人之所想】
@@ -235,7 +234,11 @@ class GuideAgent:
                 elif k == "days":
                     v = f"{v}天"
                 info_parts.append(f"{label}：{v}")
-            info_block = "[当前已收集信息]\n" + "\n".join(info_parts) + "\n\n请根据以上已收集信息继续引导对话，不要重复询问已知信息。\n\n"
+            info_block = (
+                "[当前已收集信息]\n" + "\n".join(info_parts)
+                + "\n\n以上字段用户已选定。严禁再询问这些项。"
+                + "若已有目的地和天数，必须立刻调用 start_planning。\n\n"
+            )
         else:
             info_block = "[当前已收集信息]\n暂无，请通过对话收集用户的旅行需求。\n\n"
 
@@ -291,6 +294,9 @@ class GuideAgent:
         # ── Step 1: 提取旅行信息（隐式，用户不可见）──
         if not user_message.startswith("[系统]"):
             self._extract_travel_info_from_conversation()
+            ready = self._try_finish_if_ready()
+            if ready:
+                return ready
 
         # ── Step 2: 正式对话回复 ──
         messages = self._build_system_messages() + self.conversation_history
@@ -379,9 +385,39 @@ class GuideAgent:
         except Exception as e:
             print(f"[GuideAgent] 信息提取失败(非致命): {e}")
 
+    def _try_finish_if_ready(self) -> Optional[Dict[str, Any]]:
+        """目的地+天数齐全则直接开规划，避免模型再追问已勾选的标签。"""
+        dest = self.travel_info.get("destination")
+        days = self.travel_info.get("days")
+        if not dest or not days:
+            return None
+        intent_data = {
+            "destination": dest,
+            "duration_days": int(days),
+            "people_count": 1,
+            "budget": float(self.travel_info.get("budget") or 0),
+            "preferences": list(self.travel_info.get("preferences") or []),
+            "travel_style": "balanced",
+            "special_requirements": self.travel_info.get("special_requirements") or "",
+        }
+        self._enrich_intent_from_travel_info(intent_data)
+        confirm_text = self._build_confirm_text(intent_data)
+        self.conversation_history.append({
+            "role": "assistant",
+            "content": confirm_text,
+        })
+        return {
+            "reply": confirm_text,
+            "is_ready": True,
+            "intent": intent_data,
+            "travel_info": self.get_travel_info(),
+        }
+
     def _enrich_intent_from_travel_info(self, intent_data: Dict[str, Any]):
         """用 travel_info 中已收集的信息补充 start_planning 的 intent"""
         ti = self.travel_info
+        if ti.get("days") and not intent_data.get("duration_days"):
+            intent_data["duration_days"] = int(ti["days"])
         if ti.get("budget") and not intent_data.get("budget"):
             intent_data["budget"] = ti["budget"]
         if ti.get("preferences") and not intent_data.get("preferences"):

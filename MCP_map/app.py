@@ -1,5 +1,5 @@
 """
-MCP 旅游 Agent 后端 — Flask API
+智能AI旅游规划助手 — Flask API
 接入 Multi-agent 系统（DeepSeek + 百度地图API + 文化Agent + 质量迭代）
 
 架构:
@@ -473,7 +473,7 @@ def _extract_weather_multiagent(response: dict):
     if not weather:
         return {}
 
-    # AmapClientAdapter 提供了 forecasts 字段（高德预报格式）
+    # 适配器提供 forecasts 字段（预报格式）
     if "forecasts" in weather:
         return {
             "city": weather.get("city", ""),
@@ -1154,7 +1154,7 @@ def api_search_place():
 
     data = _map_tools.search_pois(keywords=kw, city=city, page_size=8)
     results = []
-    for p in data.get("pois", []):
+    for p in data.get("pois") or []:
         loc = p.get("location", "")
         if not loc or "," not in loc:
             continue
@@ -1168,6 +1168,22 @@ def api_search_place():
             })
         except ValueError:
             continue
+    if not results:
+        geo = _map_tools.geocode(address=kw, city=city)
+        for g in geo.get("geocodes") or []:
+            loc = g.get("location", "")
+            if not loc or "," not in loc:
+                continue
+            lng_s, lat_s = loc.split(",", 1)
+            try:
+                results.append({
+                    "name": kw,
+                    "address": g.get("formatted_address", ""),
+                    "longitude": float(lng_s),
+                    "latitude": float(lat_s),
+                })
+            except ValueError:
+                continue
     return jsonify(results)
 
 
