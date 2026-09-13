@@ -14,6 +14,7 @@ KEY.md
 
 # Local junk
 Anqing_Data/crawl/chrome_profile/
+Anqing_Data/crawl/mfw_cookies.json
 
 # Node
 node_modules/
