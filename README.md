@@ -87,6 +87,33 @@ cd MCP_map
 
 浏览器打开：http://127.0.0.1:5000
 
+## 长期公网演示（推荐 Render）
+
+别人用链接打开，需要把网站挂到云上。密钥只填在平台的环境变量里，不要写进 Git。
+
+1. 打开 [Render](https://render.com)，用 GitHub 登录，选择这个仓库 `Kallen-Dis/-AI-`。
+2. 若提示使用 Blueprint，选仓库根目录的 `render.yaml`；或新建 Web Service，构建设置为：
+   - Build：`pip install -r MCP_map/requirements.txt`
+   - Start：`gunicorn --chdir MCP_map -b 0.0.0.0:$PORT --workers 1 --threads 4 --timeout 180 app:app`
+3. 在 Environment 里填写（与本地 `.env` 相同，不要公开）：
+   - `DEEPSEEK_API_KEY`
+   - `DEEPSEEK_BASE_URL` = `https://api.deepseek.com`
+   - `DEEPSEEK_MODEL` = `deepseek-chat`
+   - `BAIDU_MAP_AK`
+   - `BAIDU_MAP_BROWSER_AK`
+4. 部署完成后会得到 `https://xxxx.onrender.com`。把这个地址发给别人即可。
+5. 到百度开放平台，给**浏览器端 Key** 的 Referer 增加：`https://你的onrender域名/*`  
+   服务端 Key 若开了 IP 白名单，先关掉或加上 Render 出口 IP，否则搜点和路线会失败。
+
+免费套餐闲置约 15 分钟会休眠，第一次打开可能要等 1 分钟。要一直不休眠，在 Render 把套餐升到付费。
+
+也可用 Docker（本仓库已有 `Dockerfile`）部署到任意云主机：
+
+```bash
+docker build -t travel-ai .
+docker run -p 5000:5000 --env-file .env travel-ai
+```
+
 首次使用建议：
 
 1. 顶部选择天数、偏好、预算（选过的项对话里不会再问）

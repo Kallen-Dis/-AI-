@@ -1,0 +1,14 @@
+.git
+.venv
+.env
+KEY.md
+**/__pycache__
+**/*.pyc
+Anqing_Data
+TravelPlanner
+TripTailor
+orchestrator/outputs
+*.mp4
+.cursor
+tmp
+.tmp_repro_amap.py

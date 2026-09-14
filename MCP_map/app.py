@@ -1250,12 +1250,14 @@ def delete_journal_entry(entry_id):
 
 if __name__ == "__main__":
     ds_key = os.environ.get("DEEPSEEK_API_KEY", "")
+    host = os.environ.get("HOST", "0.0.0.0")
+    port = int(os.environ.get("PORT", "5000"))
     print("=" * 55)
     print("  智能AI旅游规划助手")
-    print("  http://localhost:5000")
+    print(f"  http://{host}:{port}")
     print("=" * 55)
     print(f"  DEEPSEEK_API_KEY: {'OK (' + ds_key[:8] + '...)' if ds_key else 'MISSING'}")
     print(f"  BAIDU_MAP_AK:     {'OK (' + BAIDU_AK[:8] + '...)' if BAIDU_AK else 'MISSING'}")
     print(f"  BAIDU_BROWSER_AK: {'OK' if BAIDU_BROWSER_AK else 'MISSING'}")
     print("=" * 55)
-    app.run(debug=True, port=5000)
+    app.run(debug=False, host=host, port=port)

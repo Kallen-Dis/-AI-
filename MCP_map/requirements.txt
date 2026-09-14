@@ -2,3 +2,5 @@ flask>=3.0
 python-dotenv>=1.0
 requests>=2.31
 openai>=1.10
+gunicorn>=22.0; platform_system != "Windows"
+waitress>=3.0
